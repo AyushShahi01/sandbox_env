@@ -1,0 +1,82 @@
+name: ${COMPOSE_PROJECT_NAME:-etl-sandbox}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16.4}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sandbox_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+      POSTGRES_DB: postgres
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+      - ./database/source_schema.sql:/seed/source_schema.sql:ro
+      - ./database/warehouse_schema.sql:/seed/warehouse_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  airflow-init:
+    build: .
+    image: ${AIRFLOW_IMAGE:-etl-sandbox-airflow:2.10.5}
+    depends_on:
+      postgres: { condition: service_healthy }
+      airflow-permissions: { condition: service_completed_successfully }
+    environment: &airflow-env
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-sandbox_admin}:${POSTGRES_PASSWORD:-change-me-local-only}@postgres:5432/${AIRFLOW_DB:-airflow_db}
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      PYTHONPATH: /opt/airflow
+      ETL_DB_HOST: postgres
+      ETL_DB_PORT: 5432
+      ETL_DB_USER: ${POSTGRES_USER:-sandbox_admin}
+      ETL_DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+      ETL_SOURCE_DB: ${SOURCE_DB:-source_db}
+      ETL_WAREHOUSE_DB: ${WAREHOUSE_DB:-warehouse_db}
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER:-admin}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-change-me-airflow-only}
+      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.test}
+    volumes: &airflow-volumes
+      - ./dags:/opt/airflow/dags
+      - ./etl:/opt/airflow/etl
+      - ./scripts:/opt/airflow/scripts
+      - ./tests:/opt/airflow/tests:ro
+      - ./database:/opt/airflow/database:ro
+      - airflow-logs:/opt/airflow/logs
+      - etl-data:/opt/airflow/data
+    command: bash -c "airflow db migrate && airflow users create --username $${AIRFLOW_ADMIN_USER:-admin} --password $${AIRFLOW_ADMIN_PASSWORD:-change-me-airflow-only} --firstname Sandbox --lastname Admin --role Admin --email $${AIRFLOW_ADMIN_EMAIL:-admin@example.test} || true && PGPASSWORD=$${ETL_DB_PASSWORD} psql -h postgres -U $${ETL_DB_USER} -d $${ETL_SOURCE_DB} -f /opt/airflow/database/source_schema.sql && PGPASSWORD=$${ETL_DB_PASSWORD} psql -h postgres -U $${ETL_DB_USER} -d $${ETL_WAREHOUSE_DB} -f /opt/airflow/database/warehouse_schema.sql && PGPASSWORD=$${ETL_DB_PASSWORD} psql -h postgres -U $${ETL_DB_USER} -d $${ETL_WAREHOUSE_DB} -f /opt/airflow/database/migrations/02_multilayer.sql"
+
+  airflow-permissions:
+    image: ${AIRFLOW_IMAGE:-etl-sandbox-airflow:2.10.5}
+    user: "0:0"
+    volumes:
+      - etl-data:/opt/airflow/data
+    command: bash -c "mkdir -p /opt/airflow/data && chown -R 50000:0 /opt/airflow/data"
+
+  airflow-webserver:
+    build: .
+    image: ${AIRFLOW_IMAGE:-etl-sandbox-airflow:2.10.5}
+    depends_on: { airflow-init: { condition: service_completed_successfully } }
+    environment: *airflow-env
+    ports: ["${AIRFLOW_PORT:-8080}:8080"]
+    volumes: *airflow-volumes
+    command: airflow webserver
+
+  airflow-scheduler:
+    build: .
+    image: ${AIRFLOW_IMAGE:-etl-sandbox-airflow:2.10.5}
+    depends_on: { airflow-init: { condition: service_completed_successfully } }
+    environment: *airflow-env
+    volumes: *airflow-volumes
+    command: airflow scheduler
+
+volumes:
+  postgres-data:
+  airflow-logs:
+  etl-data:

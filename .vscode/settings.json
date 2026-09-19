@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "docker compose": true,
+        "/^python -m compileall -q etl dags scripts tests; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; python -m pytest -q tests; if \\(\\$LASTEXITCODE -ne 0\\) \\{ exit \\$LASTEXITCODE \\}; docker compose exec airflow-scheduler airflow dags list-import-errors$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
