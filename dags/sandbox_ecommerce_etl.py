@@ -38,6 +38,11 @@ def check_source_task(**context):
 
 
 def extract_task(**context):
+    if mode(context) == "connection_timeout":
+        marker = DATA_DIR / f"{batch_id(context)}-connection-timeout.marker"
+        if not marker.exists():
+            marker.touch()
+            raise RuntimeError("SANDBOX_INJECTED_FAILURE: CONNECTION_TIMEOUT while opening PostgreSQL connection")
     if mode(context) == "extract_error":
         raise RuntimeError("SANDBOX_INJECTED_FAILURE: extract_error before extraction")
     path = DATA_DIR / f"{batch_id(context)}-raw.json"

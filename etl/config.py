@@ -1,6 +1,6 @@
 import os
 
-ALLOWED_FAILURE_MODES = {"none", "extract_error", "transform_error", "invalid_data", "publish_error"}
+ALLOWED_FAILURE_MODES = {"none", "connection_timeout", "extract_error", "transform_error", "invalid_data", "publish_error"}
 STATUSES = {"placed", "paid", "cancelled"}
 
 

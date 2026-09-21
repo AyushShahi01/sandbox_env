@@ -72,6 +72,16 @@ Use the Airflow UI's **Trigger DAG > Configuration** and enter one of these JSON
 
 `extract_error` fails before extraction. `invalid_data` reaches staging but fails validation before publication. `publish_error` raises inside the publication transaction and PostgreSQL rolls back. Before and after each failure, rerun the warehouse verification queries and confirm the published counts and numeric revenue are unchanged. Logs contain an explicit `SANDBOX_INJECTED_FAILURE` marker for operational injections.
 
+### Fail once, then manually rerun successfully
+
+The `sandbox_retry_demo` DAG demonstrates an intentional pipeline failure. Trigger it from the Airflow UI or CLI:
+
+```powershell
+docker compose exec airflow-scheduler airflow dags trigger sandbox_retry_demo
+```
+
+The DAG waits 10 seconds in `wait_ten_seconds`, then `fail_once_then_manual_success` fails on the first attempt and has zero automatic retries. In the Airflow UI, open the failed run, clear the failed task, and let the scheduler rerun it. The second attempt succeeds and allows `finish` to run.
+
 ## Tests
 
 Pure tests require only Python dependencies:
